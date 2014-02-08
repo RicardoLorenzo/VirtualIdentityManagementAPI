@@ -1,0 +1,133 @@
+/*
+ * Base64 class
+ * 
+ * This program is free software: you can redistribute it and/or modify it under the terms of the
+ * GNU General Public License as published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ * 
+ * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without
+ * even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License along with this program. If
+ * not, see <http://www.gnu.org/licenses/>.
+ * 
+ * Author: Ricardo Lorenzo <unshakablespirit@gmail.com>
+ */
+package com.ricardolorenzo.identity.security;
+
+/**
+ * Base64.java
+ * 
+ * @author Ricardo Lorenzo
+ * @version 0.1
+ */
+
+public class Base64 {
+    private static char[] characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=".toCharArray();
+    private static byte[] codes;
+
+    static {
+        codes = new byte[256];
+        for (int i = 0; i < 256; i++) {
+            codes[i] = -1;
+        }
+
+        for (int i = 65; i <= 90; i++) {
+            codes[i] = (byte) (i - 65);
+        }
+
+        for (int i = 97; i <= 122; i++) {
+            codes[i] = (byte) ((26 + i) - 97);
+        }
+
+        for (int i = 48; i <= 57; i++) {
+            codes[i] = (byte) ((52 + i) - 48);
+        }
+
+        codes[43] = 62;
+        codes[47] = 63;
+    }
+
+    public Base64() {
+        super();
+    }
+
+    /**
+     * Decode Base64 string
+     * 
+     * @param data
+     * @return byte[]
+     * @throws SecurityException
+     */
+    public static byte[] decode(char data[]) throws SecurityException {
+        int tempLen = data.length;
+        for (int ix = 0; ix < data.length; ix++) {
+            if (data[ix] > '\377' || codes[data[ix]] < 0) {
+                tempLen--;
+            }
+        }
+        int len = (tempLen / 4) * 3;
+        if (tempLen % 4 == 3) {
+            len += 2;
+        }
+        if (tempLen % 4 == 2) {
+            len++;
+        }
+        byte out[] = new byte[len];
+        int shift = 0;
+        int accum = 0;
+        int index = 0;
+        for (int ix = 0; ix < data.length; ix++) {
+            int value = data[ix] <= '\377' ? ((int) (codes[data[ix]])) : -1;
+            if (value >= 0) {
+                accum <<= 6;
+                shift += 6;
+                accum |= value;
+                if (shift >= 8) {
+                    shift -= 8;
+                    out[index++] = (byte) (accum >> shift & 0xff);
+                }
+            }
+        }
+        if (index != out.length) {
+            throw new SecurityException("invalid data length");
+        }
+        return out;
+    }
+
+    /**
+     * Encode some data using Base64
+     * 
+     * @param data
+     * @return char[]
+     */
+    public static char[] encode(byte data[]) {
+        char out[] = new char[((data.length + 2) / 3) * 4];
+        int i = 0;
+        for (int index = 0; i < data.length; index += 4) {
+            boolean quad = false;
+            boolean trip = false;
+            int val = 0xff & data[i];
+            val <<= 8;
+            if (i + 1 < data.length) {
+                val |= 0xff & data[i + 1];
+                trip = true;
+            }
+            val <<= 8;
+            if (i + 2 < data.length) {
+                val |= 0xff & data[i + 2];
+                quad = true;
+            }
+            out[index + 3] = characters[quad ? val & 0x3f : 64];
+            val >>= 6;
+            out[index + 2] = characters[trip ? val & 0x3f : 64];
+            val >>= 6;
+            out[index + 1] = characters[val & 0x3f];
+            val >>= 6;
+            out[index] = characters[val & 0x3f];
+            i += 3;
+        }
+        return out;
+    }
+}

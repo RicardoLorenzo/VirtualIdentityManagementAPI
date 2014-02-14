@@ -1,5 +1,6 @@
 package com.ricardolorenzo.identity.group;
 
+import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.List;
 import java.util.Map;
@@ -11,6 +12,7 @@ import com.ricardolorenzo.directory.DirectoryException;
 import com.ricardolorenzo.identity.Identity;
 import com.ricardolorenzo.identity.IdentityAttributeMap;
 import com.ricardolorenzo.identity.IdentityException;
+import com.ricardolorenzo.identity.group.impl.GroupIdentityManagerLDAPv3;
 import com.ricardolorenzo.identity.group.impl.GroupIdentityManagerMSAD;
 import com.ricardolorenzo.identity.script.ScriptCollection;
 import com.ricardolorenzo.identity.user.UserIdentity;
@@ -28,8 +30,6 @@ public abstract class GroupIdentityManager {
     private ScriptCollection scripts;
 
     public abstract void addGroupIdentity(GroupIdentity group) throws IdentityException;
-
-    public abstract void addGroupUserIdentityMember(GroupIdentity group, UserIdentity user) throws IdentityException;
 
     public abstract void addGroupUserIdentityMember(String group, String user) throws IdentityException;
 
@@ -62,13 +62,13 @@ public abstract class GroupIdentityManager {
                 throw new IdentityException("invalid user identity manager type");
             }
             case GROUP_MANAGER_LDAPv3: {
-                // try {
-                // identityManager = new GroupIdentityManagerLDAPv3(conf);
-                // } catch (final DirectoryException e) {
-                /**
-                 * TODO log this
-                 */
-                // }
+                try {
+                    identityManager = new GroupIdentityManagerLDAPv3(conf);
+                } catch (final DirectoryException e) {
+                    /**
+                     * TODO log this
+                     */
+                }
                 break;
             }
             case GROUP_MANAGER_MSAD: {
@@ -111,19 +111,6 @@ public abstract class GroupIdentityManager {
             throws IdentityException;
 
     /**
-     * Get the group groups members names
-     * 
-     * @param group
-     *            Group for looking members
-     * @param recursive
-     *            Get all the user members for nested groups
-     * @return
-     * @throws IdentityException
-     */
-    public abstract List<String> getGroupIdentityMemberNames(GroupIdentity group, boolean recursive)
-            throws IdentityException;
-
-    /**
      * Get the group user members
      * 
      * @param group
@@ -134,19 +121,6 @@ public abstract class GroupIdentityManager {
      * @throws IdentityException
      */
     public abstract List<UserIdentity> getGroupIdentityUserMembers(GroupIdentity group, boolean recursive)
-            throws IdentityException;
-
-    /**
-     * Get the group user members names
-     * 
-     * @param group
-     *            Group for looking members
-     * @param recursive
-     *            Get all the user members for nested groups
-     * @return
-     * @throws IdentityException
-     */
-    public abstract List<String> getGroupIdentityUserMemberNames(GroupIdentity group, boolean recursive)
             throws IdentityException;
 
     /**
@@ -161,19 +135,36 @@ public abstract class GroupIdentityManager {
      */
     public abstract List<GroupIdentity> getUserGroupIdentities(UserIdentity user) throws IdentityException;
 
-    /**
-     * Get the groups for a specific user
-     * 
-     * @param group
-     *            Group for looking members
-     * @param recursive
-     *            Get all the user members for nested groups
-     * @return
-     * @throws IdentityException
-     */
-    public abstract List<GroupIdentity> getUserGroupIdentityNames(UserIdentity user) throws IdentityException;
-
-    public abstract List<Identity> getModifiedGroups(Calendar date) throws IdentityException;
+    protected static final List<String> getList(final String text) {
+        final List<String> list = new ArrayList<String>();
+        if (text == null) {
+            return list;
+        } else if (text.contains("\n")) {
+            for (String token : text.split("\n")) {
+                token = token.trim();
+                if (!token.isEmpty()) {
+                    list.add(token);
+                }
+            }
+        } else if (text.contains(",")) {
+            for (String token : text.split(",")) {
+                token = token.trim();
+                if (!token.isEmpty()) {
+                    list.add(token);
+                }
+            }
+        } else if (text.contains(" ")) {
+            for (String token : text.split("\\ ")) {
+                token = token.trim();
+                if (!token.isEmpty()) {
+                    list.add(token);
+                }
+            }
+        } else if (!text.isEmpty()) {
+            list.add(text);
+        }
+        return list;
+    }
 
     public abstract GroupIdentity getGroupIdentity(String group) throws IdentityException;
 
@@ -272,7 +263,7 @@ public abstract class GroupIdentityManager {
 
     public abstract void removeUserMember(String groupID, String userID) throws Exception;
 
-    public abstract List<Identity> searchGroup(String match) throws Exception;
+    public abstract List<GroupIdentity> searchGroup(String match) throws Exception;
 
     public abstract void updateGroup(GroupIdentity group) throws Exception;
 }

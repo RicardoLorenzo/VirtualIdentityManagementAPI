@@ -45,7 +45,7 @@ public class UserIdentityManagerLDAPv3 extends UserIdentityManager {
     private String timezone;
     private String defaultDomain;
     private String defaultUserBranch;
-    private String userAccountAttribute;
+    private String userEntryAttribute;
     private String userCommonNameAttribute;
     private String memberAttribute;
 
@@ -68,10 +68,10 @@ public class UserIdentityManagerLDAPv3 extends UserIdentityManager {
         if (this.properties.containsKey("directory.user.default_branch")) {
             this.defaultUserBranch = this.properties.getProperty("directory.user.default_branch");
         }
-        if (this.properties.containsKey("directory.user.account_attribute")) {
-            this.userAccountAttribute = this.properties.getProperty("directory.user.account_attribute");
+        if (this.properties.containsKey("directory.user.attribute")) {
+            this.userEntryAttribute = this.properties.getProperty("directory.user.attribute");
         } else {
-            this.userAccountAttribute = "uid";
+            this.userEntryAttribute = "uid";
         }
         if (this.properties.containsKey("directory.user.cn_attribute")) {
             this.userCommonNameAttribute = this.properties.getProperty("directory.user.cn_attribute");
@@ -115,7 +115,7 @@ public class UserIdentityManagerLDAPv3 extends UserIdentityManager {
                     for (final String objectClass : this.userObjectclasses) {
                         q.addCondition("objectclass", objectClass, LDAPDirectoryQuery.EXACT);
                     }
-                    q.addCondition(this.userAccountAttribute,
+                    q.addCondition(this.userEntryAttribute,
                             user.getAttributeFirstValue(UserIdentity.DEFAULT_ATTRIBUTE_UID), LDAPDirectoryQuery.EXACT);
                     final List<Identity> result = this.directoryManager.searchIdentities(q);
                     if ((result == null) || result.isEmpty()) {
@@ -189,7 +189,7 @@ public class UserIdentityManagerLDAPv3 extends UserIdentityManager {
 
                 final List<Identity> users = this.directoryManager.searchIdentities(q);
                 for (final Identity user : users) {
-                    if (!user.hasAttribute(this.userAccountAttribute)) {
+                    if (!user.hasAttribute(this.userEntryAttribute)) {
                         continue;
                     }
 
@@ -253,7 +253,7 @@ public class UserIdentityManagerLDAPv3 extends UserIdentityManager {
             for (final String objectClass : this.userObjectclasses) {
                 q.addCondition("objectclass", objectClass, LDAPDirectoryQuery.EXACT);
             }
-            q.addCondition(this.userAccountAttribute, user, LDAPDirectoryQuery.EXACT);
+            q.addCondition(this.userEntryAttribute, user, LDAPDirectoryQuery.EXACT);
             final List<Identity> result = this.directoryManager.searchIdentities(q);
             if ((result != null) && !result.isEmpty()) {
                 return getUserIdentity(result.get(0));
@@ -319,7 +319,7 @@ public class UserIdentityManagerLDAPv3 extends UserIdentityManager {
             for (final String objectClass : this.userObjectclasses) {
                 q.addCondition("objectclass", objectClass, LDAPDirectoryQuery.EXACT);
             }
-            q.addCondition(this.userAccountAttribute, match, LDAPDirectoryQuery.CONTAINS);
+            q.addCondition(this.userEntryAttribute, match, LDAPDirectoryQuery.CONTAINS);
             for (final Identity user : this.directoryManager.sortedSearch(q, this.userCommonNameAttribute)) {
                 users.add(getUserIdentity(user));
             }
@@ -333,7 +333,7 @@ public class UserIdentityManagerLDAPv3 extends UserIdentityManager {
     private void storeNewUserIdentity(final UserIdentity actualUser, final String uid) throws IdentityException {
         try {
             final StringBuilder sb = new StringBuilder();
-            sb.append(this.userAccountAttribute);
+            sb.append(this.userEntryAttribute);
             sb.append("=");
             sb.append(uid);
             sb.append(",");
@@ -358,7 +358,7 @@ public class UserIdentityManagerLDAPv3 extends UserIdentityManager {
             sb.append(",");
             sb.append(this.basedn);
             final Identity i = new LDAPDirectoryEntry(sb.toString());
-            actualUser.setAttribute(this.userAccountAttribute, uid);
+            actualUser.setAttribute(this.userEntryAttribute, uid);
             loadIdentityAttributes(i, actualUser);
             this.directoryManager.addIdentity(i, LDAPDirectoryWriter.DIRECTORY_TYPE_LDAPV3);
         } catch (final DirectoryException e) {

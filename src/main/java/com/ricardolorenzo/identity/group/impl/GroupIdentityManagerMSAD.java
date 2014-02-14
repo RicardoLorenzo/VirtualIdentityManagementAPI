@@ -17,10 +17,14 @@
 
 package com.ricardolorenzo.identity.group.impl;
 
+import java.text.Collator;
+import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 import java.util.TimeZone;
+import java.util.TreeMap;
 
 import com.ricardolorenzo.directory.DirectoryException;
 import com.ricardolorenzo.directory.DirectoryIdentityManager;
@@ -34,6 +38,7 @@ import com.ricardolorenzo.identity.IdentityException;
 import com.ricardolorenzo.identity.group.GroupIdentity;
 import com.ricardolorenzo.identity.group.GroupIdentityManager;
 import com.ricardolorenzo.identity.user.UserIdentity;
+import com.ricardolorenzo.identity.user.impl.UserIdentityManagerMSAD;
 
 /**
  * 
@@ -61,8 +66,9 @@ public class GroupIdentityManagerMSAD extends GroupIdentityManager {
     }
 
     private final DirectoryIdentityManager directoryManager;
+    private final UserIdentityManagerMSAD userManager;
     private final Properties properties;
-    private String basedn;
+    private final String basedn;
     private String timezone;
     private String defaultGroupBranch;
 
@@ -70,9 +76,11 @@ public class GroupIdentityManagerMSAD extends GroupIdentityManager {
         super();
         this.properties = conf;
         this.directoryManager = new DirectoryIdentityManager(conf);
-        if (this.properties.containsKey("directory.basedn")) {
-            this.basedn = this.properties.getProperty("directory.basedn");
+        this.userManager = new UserIdentityManagerMSAD(conf);
+        if (!this.properties.containsKey("directory.basedn")) {
+            throw new DirectoryException("directory basedn not defined [directory.basedn]");
         }
+        this.basedn = this.properties.getProperty("directory.basedn");
         if (this.properties.containsKey("directory.timezone")) {
             this.timezone = this.properties.getProperty("directory.timezone");
         }
@@ -87,22 +95,35 @@ public class GroupIdentityManagerMSAD extends GroupIdentityManager {
     }
 
     @Override
-    public void addGroupUserIdentityMember(final GroupIdentity group, final UserIdentity user) throws IdentityException {
-        // TODO Auto-generated method stub
-
-    }
-
-    @Override
     public void addGroupUserIdentityMember(final String groupID, final String userID) throws IdentityException {
-        // TODO Auto-generated method stub
-
+        if (userID == null) {
+            throw new IdentityException("invalid user");
+        }
+        if (groupID == null) {
+            throw new IdentityException("invalid group");
+        }
+        final GroupIdentity group = getGroupIdentity(groupID);
+        if (group == null) {
+            throw new IdentityException("group [" + groupID + "] does not exists");
+        }
+        final Identity user = this.userManager.getUserBasicIdentity(userID);
+        if (user == null) {
+            throw new IdentityException("user [" + userID + "] does not exists");
+        }
+        try {
+            this.directoryManager
+                    .addIdentityAttribute(group.getAttributeFirstStringValue("dn"), "member", user.getID());
+        } catch (final DirectoryException e) {
+            logError(e);
+            throw new IdentityException(e.getMessage());
+        }
     }
 
-    private void createBranch(final StringBuilder _branch) throws DirectoryException {
-        final String _name = getOrganizationalUnitName(_branch.toString());
-        final Identity i = new LDAPDirectoryEntry(_branch.toString());
+    private void createBranch(final StringBuilder branch) throws DirectoryException {
+        final String _name = getOrganizationalUnitName(branch.toString());
+        final Identity i = new LDAPDirectoryEntry(branch.toString());
         i.setAttribute("objectClass", new String[] { "top", "organizationalUnit" });
-        i.setAttribute("distinguishedName", _branch.toString());
+        i.setAttribute("distinguishedName", branch.toString());
         i.setAttribute("instanceType", "4");
         i.setAttribute("objectCategory", "CN=Organizational-Unit,CN=Schema,CN=Configuration," + this.basedn);
         i.setAttribute("ou", _name);
@@ -116,7 +137,7 @@ public class GroupIdentityManagerMSAD extends GroupIdentityManager {
         if (actualGroup != null) {
             try {
                 this.directoryManager.removeIdentity(actualGroup.getID());
-            } catch (DirectoryException e) {
+            } catch (final DirectoryException e) {
                 throw new IdentityException(e);
             }
         } else {
@@ -168,41 +189,101 @@ public class GroupIdentityManagerMSAD extends GroupIdentityManager {
     }
 
     @Override
-    public List<String> getGroupIdentityMemberNames(final GroupIdentity group, final boolean recursive)
-            throws IdentityException {
-        // TODO Auto-generated method stub
-        return null;
-    }
-
-    @Override
     public List<GroupIdentity> getGroupIdentityMembers(final GroupIdentity group, final boolean recursive)
             throws IdentityException {
-        // TODO Auto-generated method stub
-        return null;
-    }
-
-    @Override
-    public List<String> getGroupIdentityUserMemberNames(final GroupIdentity group, final boolean recursive)
-            throws IdentityException {
-        // TODO Auto-generated method stub
-        return null;
+        final Map<String, GroupIdentity> groups = new TreeMap<String, GroupIdentity>(Collator.getInstance());
+        final LDAPDirectoryQuery q = new LDAPDirectoryQuery();
+        q.addCondition("objectclass", "group", LDAPDirectoryQuery.EXACT);
+        q.addCondition("name", group, LDAPDirectoryQuery.EXACT);
+        List<Identity> results = null;
+        try {
+            results = this.directoryManager.searchIdentities(q);
+        } catch (final DirectoryException e) {
+            logError(e);
+            throw new IdentityException(e.getMessage());
+        }
+        if ((results != null) && !results.isEmpty()) {
+            final GroupIdentity matchGroup = getGroupIdentity(results.get(0));
+            final List<String> checkedGroups = new ArrayList<String>();
+            getGroupMembers(matchGroup, checkedGroups, recursive, groups);
+        }
+        return new ArrayList<GroupIdentity>(groups.values());
     }
 
     @Override
     public List<UserIdentity> getGroupIdentityUserMembers(final GroupIdentity group, final boolean recursive)
             throws IdentityException {
-        // TODO Auto-generated method stub
-        return null;
+        final Map<String, UserIdentity> users = new TreeMap<String, UserIdentity>(Collator.getInstance());
+        final LDAPDirectoryQuery q = new LDAPDirectoryQuery();
+        q.addCondition("objectclass", "group", LDAPDirectoryQuery.EXACT);
+        q.addCondition("name", group, LDAPDirectoryQuery.EXACT);
+        List<Identity> results = null;
+        try {
+            results = this.directoryManager.searchIdentities(q);
+        } catch (final DirectoryException e) {
+            logError(e);
+            throw new IdentityException(e.getMessage());
+        }
+        if ((results != null) && !results.isEmpty()) {
+            final GroupIdentity matchGroup = getGroupIdentity(results.get(0));
+            final List<String> checkedGroups = new ArrayList<String>();
+            getGroupUserMembers(matchGroup, checkedGroups, recursive, users);
+        }
+        return new ArrayList<UserIdentity>(users.values());
+    }
+
+    private void getGroupMembers(final GroupIdentity group, final List<String> checkedGroups, final boolean recursive,
+            final Map<String, GroupIdentity> groups) throws IdentityException {
+        if (group.hasAttribute("member")) {
+            for (final Object o : group.getAttribute("member")) {
+                try {
+                    final Identity i = this.directoryManager.getIdentity(String.valueOf(o));
+                    if (i.hasAttributeValue("objectClass", "group") && !i.hasAttribute("sAMAccountName")) {
+                        final GroupIdentity memberGroup = getGroupIdentity(i);
+                        groups.put(group.getID(), memberGroup);
+                    }
+                } catch (final DirectoryException e) {
+                    // nothing
+                }
+            }
+        }
+        if (recursive) {
+            for (final GroupIdentity memberGroup : getGroupIdentityMembers(group, recursive)) {
+                if (!checkedGroups.contains(memberGroup.getID())) {
+                    getGroupMembers(memberGroup, checkedGroups, recursive, groups);
+                    checkedGroups.add(memberGroup.getID());
+                }
+            }
+        }
+    }
+
+    private void getGroupUserMembers(final GroupIdentity group, final List<String> checkedGroups,
+            final boolean recursive, final Map<String, UserIdentity> users) throws IdentityException {
+        if (group.hasAttribute("member")) {
+            for (final Object o : group.getAttribute("member")) {
+                try {
+                    final Identity i = this.directoryManager.getIdentity(String.valueOf(o));
+                    if (i.hasAttributeValue("objectClass", "person") && i.hasAttribute("sAMAccountName")) {
+                        final UserIdentity user = this.userManager.getUserIdentity(i);
+                        users.put(user.getID(), user);
+                    }
+                } catch (final DirectoryException e) {
+                    // nothing
+                }
+            }
+        }
+        if (recursive) {
+            for (final GroupIdentity memberGroup : getGroupIdentityMembers(group, recursive)) {
+                if (!checkedGroups.contains(memberGroup.getID())) {
+                    getGroupUserMembers(memberGroup, checkedGroups, recursive, users);
+                    checkedGroups.add(memberGroup.getID());
+                }
+            }
+        }
     }
 
     @Override
     public List<GroupIdentity> getModifiedGroupIdentities(final Calendar date) throws IdentityException {
-        // TODO Auto-generated method stub
-        return null;
-    }
-
-    @Override
-    public List<Identity> getModifiedGroups(final Calendar _cal) throws IdentityException {
         // TODO Auto-generated method stub
         return null;
     }
@@ -237,12 +318,6 @@ public class GroupIdentityManagerMSAD extends GroupIdentityManager {
         return null;
     }
 
-    @Override
-    public List<GroupIdentity> getUserGroupIdentityNames(final UserIdentity user) throws IdentityException {
-        // TODO Auto-generated method stub
-        return null;
-    }
-
     private void loadIdentityAttributes(final Identity destinationIdentity, final GroupIdentity sourceGroup)
             throws DirectoryException, IdentityException {
         loadAttributesFromMap(IdentityAttributeMap.getDefaultWriteMap(), sourceGroup, destinationIdentity);
@@ -268,14 +343,51 @@ public class GroupIdentityManagerMSAD extends GroupIdentityManager {
 
     @Override
     public void removeUserMember(final String groupID, final String userID) throws Exception {
-        // TODO Auto-generated method stub
-
+        if (userID == null) {
+            throw new IdentityException("invalid user");
+        }
+        if (groupID == null) {
+            throw new IdentityException("invalid group");
+        }
+        final GroupIdentity group = getGroupIdentity(groupID);
+        if (group == null) {
+            throw new IdentityException("group [" + groupID + "] does not exists");
+        }
+        final Identity user = this.userManager.getUserBasicIdentity(userID);
+        if (user == null) {
+            throw new IdentityException("user [" + userID + "] does not exists");
+        }
+        try {
+            this.directoryManager.removeIdentityAttribute(group.getAttributeFirstStringValue("dn"), "member",
+                    user.getID());
+        } catch (final DirectoryException e) {
+            if (!((e.getMessage() != null) && (e.getMessage().contains("attribute [member] not found in entry") || e
+                    .getMessage().contains("WILL_NOT_PERFORM")))) {
+                logError(e);
+                throw new IdentityException(e.getMessage());
+            }
+        }
     }
 
     @Override
-    public List<Identity> searchGroup(final String match) throws Exception {
-        // TODO Auto-generated method stub
-        return null;
+    public List<GroupIdentity> searchGroup(final String match) throws Exception {
+        final List<GroupIdentity> groups = new ArrayList<GroupIdentity>();
+        if (match == null) {
+            return groups;
+        }
+        try {
+            final LDAPDirectoryQuery q = new LDAPDirectoryQuery();
+            this.directoryManager.setScope(LDAPConnection.SUBTREE_SCOPE);
+            q.addCondition("objectclass", "group", LDAPDirectoryQuery.EXACT);
+            q.addCondition("name", match, LDAPDirectoryQuery.CONTAINS);
+            for (final Identity group : this.directoryManager.sortedSearch(q, "name")) {
+                groups.add(getGroupIdentity(group));
+            }
+        } catch (final DirectoryException e) {
+            logError(e);
+            throw new IdentityException(e);
+        }
+        return groups;
     }
 
     private void storeGroupIdentity(final int type, final GroupIdentity group) throws IdentityException {

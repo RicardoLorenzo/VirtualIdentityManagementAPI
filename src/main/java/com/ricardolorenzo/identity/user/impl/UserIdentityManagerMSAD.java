@@ -264,7 +264,26 @@ public class UserIdentityManagerMSAD extends UserIdentityManager {
         return date;
     }
 
-    private UserIdentity getUserIdentity(final Identity user) throws IdentityException {
+    public final Identity getUserBasicIdentity(final String userID) throws IdentityException {
+        if (userID == null) {
+            return null;
+        }
+        final LDAPDirectoryQuery q = new LDAPDirectoryQuery();
+        try {
+            this.directoryManager.setScope(LDAPConnection.SUBTREE_SCOPE);
+            q.addCondition("objectclass", "person", LDAPDirectoryQuery.EXACT);
+            q.addCondition("sAMAccountName", userID, LDAPDirectoryQuery.EXACT);
+            final List<Identity> results = this.directoryManager.searchIdentities(q);
+            if ((results != null) && !results.isEmpty()) {
+                return results.get(0);
+            }
+        } catch (final DirectoryException e) {
+            throw new IdentityException(e);
+        }
+        return null;
+    }
+
+    public final UserIdentity getUserIdentity(final Identity user) throws IdentityException {
         final UserIdentity sourceUser = new UserIdentity(user);
         final UserIdentity destinationUser = new UserIdentity(new LDAPDirectoryEntry(sourceUser.getID()));
         destinationUser.setAttribute("dn", sourceUser.getID());
@@ -315,27 +334,19 @@ public class UserIdentityManagerMSAD extends UserIdentityManager {
             final Calendar lastModified = getMSADCalendarAttribute(sourceUser
                     .getAttributeFirstStringValue("whenChanged"));
             destinationUser.setAttribute(UserIdentity.DEFAULT_ATTRIBUTE_LASTMODIFED,
-                    UserIdentity.getLastModifiedString(lastModified));
+                    Identity.getLastModifiedString(lastModified));
         }
         return destinationUser;
     }
 
     @Override
-    public UserIdentity getUserIdentity(final String user) throws IdentityException {
-        if (user == null) {
+    public UserIdentity getUserIdentity(final String userID) throws IdentityException {
+        if (userID == null) {
             return null;
         }
-        final LDAPDirectoryQuery q = new LDAPDirectoryQuery();
-        try {
-            this.directoryManager.setScope(LDAPConnection.SUBTREE_SCOPE);
-            q.addCondition("objectclass", "person", LDAPDirectoryQuery.EXACT);
-            q.addCondition("sAMAccountName", user, LDAPDirectoryQuery.EXACT);
-            final List<Identity> _result = this.directoryManager.searchIdentities(q);
-            if ((_result != null) && !_result.isEmpty()) {
-                return getUserIdentity(_result.get(0));
-            }
-        } catch (final DirectoryException e) {
-            throw new IdentityException(e);
+        Identity user = getUserBasicIdentity(userID);
+        if (user != null) {
+            return getUserIdentity(user);
         }
         return null;
     }

@@ -1,3 +1,19 @@
+/*
+ * UserIdentityManagerDatabase class
+ * 
+ * This program is free software: you can redistribute it and/or modify it under the terms of the
+ * GNU General Public License as published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ * 
+ * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without
+ * even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License along with this program. If
+ * not, see <http://www.gnu.org/licenses/>.
+ * 
+ * Author: Ricardo Lorenzo <unshakablespirit@gmail.com>
+ */
 package com.ricardolorenzo.identity.user.impl;
 
 import java.security.NoSuchAlgorithmException;
@@ -13,37 +29,48 @@ import java.util.StringTokenizer;
 import com.ricardolorenzo.db.DBConnection;
 import com.ricardolorenzo.db.DBConnectionManager;
 import com.ricardolorenzo.db.DBException;
+import com.ricardolorenzo.identity.Identity;
 import com.ricardolorenzo.identity.IdentityException;
 import com.ricardolorenzo.identity.script.ScriptCollection;
 import com.ricardolorenzo.identity.user.UserIdentity;
 import com.ricardolorenzo.identity.user.UserIdentityManager;
 
+/**
+ * 
+ * @author Ricardo Lorenzo
+ * 
+ */
 public class UserIdentityManagerDatabase extends UserIdentityManager {
     private final static int MODIFICATION_TYPE_ANY = 0;
     private final static int MODIFICATION_TYPE_ADD = 1;
     private final static int MODIFICATION_TYPE_UPDATE = 2;
 
-    private DBConnection dbconnection;
+    private final DBConnection dbconnection;
 
-    public UserIdentityManagerDatabase(Properties conf) throws DBException {
+    public UserIdentityManagerDatabase(final Properties conf) throws DBException {
         super();
-        DBConnectionManager dbm = new DBConnectionManager(conf);
+        final DBConnectionManager dbm = new DBConnectionManager(conf);
         this.dbconnection = dbm.getConnection();
     }
 
-    private String createQueryFromScript(String content, Map<String, Object[]> attributes)
+    @Override
+    public void addUserIdentity(final UserIdentity user) throws IdentityException {
+        storeUserIdentity(MODIFICATION_TYPE_ADD, user);
+    }
+
+    private String createQueryFromScript(final String content, final Map<String, Object[]> attributes)
             throws NoSuchAlgorithmException, DBException, IdentityException {
-        if (content == null || content.isEmpty()) {
+        if ((content == null) || content.isEmpty()) {
             throw new IdentityException("invalid script content");
         }
         int _old_offset = 0, index = 0;
-        StringBuilder sb = new StringBuilder();
+        final StringBuilder sb = new StringBuilder();
         for (int offset = content.indexOf("[[[", 0); offset != -1; offset = content.indexOf("[[[", offset)) {
             sb.append(content.substring(_old_offset, offset));
             offset += 3;
             if (content.indexOf("]]]", offset) != -1) {
-                String attributeName = content.substring(offset, content.indexOf("]]]", offset));
-                if (attributes != null && attributes.containsKey(attributeName)) {
+                final String attributeName = content.substring(offset, content.indexOf("]]]", offset));
+                if ((attributes != null) && attributes.containsKey(attributeName)) {
                     sb.append("?");
                     if (UserIdentity.DEFAULT_ATTRIBUTE_PASSWORD.equalsIgnoreCase(attributeName)) {
                         this.dbconnection.setObject(index,
@@ -52,8 +79,8 @@ public class UserIdentityManagerDatabase extends UserIdentityManager {
                         /**
                          * Internal case to get modified entries
                          */
-                        Object[] values = attributes.get(attributeName);
-                        if (values != null && values.length > 0) {
+                        final Object[] values = attributes.get(attributeName);
+                        if ((values != null) && (values.length > 0)) {
                             if (Calendar.class.isAssignableFrom(attributes.get(attributeName)[0].getClass())) {
                                 throw new IdentityException("invalid value for field "
                                         + ScriptCollection.FIELD_LAST_MODIFIED);
@@ -63,10 +90,10 @@ public class UserIdentityManagerDatabase extends UserIdentityManager {
                             this.dbconnection.setObject(index, null);
                         }
                     } else if (UserIdentity.DEFAULT_ATTRIBUTE_LASTMODIFED.equalsIgnoreCase(attributeName)) {
-                        Object[] values = attributes.get(attributeName);
-                        if (values != null && values.length > 0) {
+                        final Object[] values = attributes.get(attributeName);
+                        if ((values != null) && (values.length > 0)) {
                             this.dbconnection.setObject(index,
-                                    UserIdentity.parseLastModifiedString(String.valueOf(values[0])));
+                                    Identity.parseLastModifiedString(String.valueOf(values[0])));
                         } else {
                             this.dbconnection.setObject(index, null);
                         }
@@ -86,107 +113,43 @@ public class UserIdentityManagerDatabase extends UserIdentityManager {
     }
 
     @Override
-    public void addUserIdentity(UserIdentity user) throws IdentityException {
-        storeUserIdentity(MODIFICATION_TYPE_ADD, user);
-    }
-
-    @Override
-    public void deleteUserIdentity(UserIdentity user) throws IdentityException {
-        UserIdentity destinationUser = getUserIdentity(user.getID());
+    public void deleteUserIdentity(final UserIdentity user) throws IdentityException {
+        final UserIdentity destinationUser = getUserIdentity(user.getID());
         if (destinationUser == null) {
             throw new IdentityException("user identity does not exists");
         }
         runQueryScript(ScriptCollection.USER_DELETE, destinationUser.getAttributes());
     }
 
-    private List<Map<String, Object>> runQueryScript(final String scriptType, Map<String, Object[]> attributes)
-            throws IdentityException {
-        List<Map<String, Object>> result = null;
-        try {
-            this.dbconnection.transactionInit();
-            ScriptCollection sc = getScriptCollection();
-            if (sc.hasScript(scriptType)) {
-                String scriptContent = sc.getScript(scriptType);
-                StringTokenizer queries = new StringTokenizer(scriptContent, ";");
-                while (queries.hasMoreElements()) {
-                    String query = queries.nextToken();
-                    if (query != null && !query.isEmpty() && !query.trim().isEmpty()) {
-                        createQueryFromScript(query, attributes);
-                        List<Map<String, Object>> last_result = this.dbconnection.transactionQuery(query);
-                        if (!last_result.isEmpty()) {
-
-                        }
-                    }
-                }
-            }
-            this.dbconnection.transactionCommit();
-        } catch (DBException e) {
-            try {
-                this.dbconnection.transactionRollback();
-            } catch (DBException e2) {
-                // nothing
-            }
-            throw new IdentityException("database error - " + e.getMessage());
-        } catch (NoSuchAlgorithmException e) {
-            try {
-                this.dbconnection.transactionRollback();
-            } catch (DBException e2) {
-                // nothing
-            }
-            throw new IdentityException(e.getMessage());
-        } finally {
-            try {
-                this.dbconnection.transactionClose();
-            } catch (DBException e) {
-                // nothing
-            }
-        }
-        return result;
-    }
-
-    private String getFirstStringValue(Object[] values) {
+    private String getFirstStringValue(final Object[] values) {
         if (values == null) {
             return null;
         }
-        for (Object o : values) {
+        for (final Object o : values) {
             return String.valueOf(o);
         }
         return null;
     }
 
     @Override
-    public List<UserIdentity> getModifiedUserIdentities(Calendar date) throws IdentityException {
-        List<UserIdentity> modifiedIdentities = new ArrayList<UserIdentity>();
-        Map<String, Object[]> attributes = new HashMap<String, Object[]>();
+    public List<UserIdentity> getModifiedUserIdentities(final Calendar date) throws IdentityException {
+        final List<UserIdentity> modifiedIdentities = new ArrayList<UserIdentity>();
+        final Map<String, Object[]> attributes = new HashMap<String, Object[]>();
         attributes.put(ScriptCollection.FIELD_LAST_MODIFIED, new Object[] { date });
-        List<Map<String, Object>> results = runQueryScript(ScriptCollection.USER_SEARCH, attributes);
+        final List<Map<String, Object>> results = runQueryScript(ScriptCollection.USER_SEARCH, attributes);
         if (results.isEmpty()) {
             return null;
         }
-        for (Map<String, Object> data : results) {
+        for (final Map<String, Object> data : results) {
             modifiedIdentities.add(getUserIdentity(data));
         }
         return modifiedIdentities;
     }
 
-    @Override
-    public UserIdentity getUserIdentity(String user) throws IdentityException {
-        UserIdentity sourceUser = new UserIdentity();
-        UserIdentity destinationUser = new UserIdentity();
-        sourceUser.setAttribute(UserIdentity.DEFAULT_ATTRIBUTE_UID, user);
-        loadWriteAttributesFromMap(sourceUser, destinationUser);
-        List<Map<String, Object>> results = runQueryScript(ScriptCollection.USER_READ, destinationUser.getAttributes());
-        if (results.isEmpty()) {
-            return null;
-        }
-        sourceUser.setAttributes(getUserIdentity(results.get(0)));
-        return sourceUser;
-    }
-
-    private UserIdentity getUserIdentity(Map<String, Object> data) throws IdentityException {
-        UserIdentity sourceUser = new UserIdentity();
-        UserIdentity destinationUser = new UserIdentity();
-        for (Entry<String, Object> e : data.entrySet()) {
+    private UserIdentity getUserIdentity(final Map<String, Object> data) throws IdentityException {
+        final UserIdentity sourceUser = new UserIdentity();
+        final UserIdentity destinationUser = new UserIdentity();
+        for (final Entry<String, Object> e : data.entrySet()) {
             sourceUser.setAttribute(e.getKey(), e.getValue());
         }
         loadReadAttributesFromMap(sourceUser, destinationUser);
@@ -194,26 +157,81 @@ public class UserIdentityManagerDatabase extends UserIdentityManager {
     }
 
     @Override
-    public List<UserIdentity> searchUserIdentity(String match) throws IdentityException {
-        List<UserIdentity> findedIdentities = new ArrayList<UserIdentity>();
-        Map<String, Object[]> attributes = new HashMap<String, Object[]>();
-        attributes.put(ScriptCollection.FIELD_MATCH, new Object[] { match });
-        List<Map<String, Object>> results = runQueryScript(ScriptCollection.USER_SEARCH, attributes);
+    public UserIdentity getUserIdentity(final String user) throws IdentityException {
+        final UserIdentity sourceUser = new UserIdentity();
+        final UserIdentity destinationUser = new UserIdentity();
+        sourceUser.setAttribute(UserIdentity.DEFAULT_ATTRIBUTE_UID, user);
+        loadWriteAttributesFromMap(sourceUser, destinationUser);
+        final List<Map<String, Object>> results = runQueryScript(ScriptCollection.USER_READ,
+                destinationUser.getAttributes());
         if (results.isEmpty()) {
             return null;
         }
-        for (Map<String, Object> data : results) {
+        sourceUser.setAttributes(getUserIdentity(results.get(0)));
+        return sourceUser;
+    }
+
+    private List<Map<String, Object>> runQueryScript(final String scriptType, final Map<String, Object[]> attributes)
+            throws IdentityException {
+        final List<Map<String, Object>> result = null;
+        try {
+            this.dbconnection.transactionInit();
+            final ScriptCollection sc = getScriptCollection();
+            if (sc.hasScript(scriptType)) {
+                final String scriptContent = sc.getScript(scriptType);
+                final StringTokenizer queries = new StringTokenizer(scriptContent, ";");
+                while (queries.hasMoreElements()) {
+                    final String query = queries.nextToken();
+                    if ((query != null) && !query.isEmpty() && !query.trim().isEmpty()) {
+                        createQueryFromScript(query, attributes);
+                        final List<Map<String, Object>> last_result = this.dbconnection.transactionQuery(query);
+                        if (!last_result.isEmpty()) {
+
+                        }
+                    }
+                }
+            }
+            this.dbconnection.transactionCommit();
+        } catch (final DBException e) {
+            try {
+                this.dbconnection.transactionRollback();
+            } catch (final DBException e2) {
+                // nothing
+            }
+            throw new IdentityException("database error - " + e.getMessage());
+        } catch (final NoSuchAlgorithmException e) {
+            try {
+                this.dbconnection.transactionRollback();
+            } catch (final DBException e2) {
+                // nothing
+            }
+            throw new IdentityException(e.getMessage());
+        } finally {
+            try {
+                this.dbconnection.transactionClose();
+            } catch (final DBException e) {
+                // nothing
+            }
+        }
+        return result;
+    }
+
+    @Override
+    public List<UserIdentity> searchUserIdentity(final String match) throws IdentityException {
+        final List<UserIdentity> findedIdentities = new ArrayList<UserIdentity>();
+        final Map<String, Object[]> attributes = new HashMap<String, Object[]>();
+        attributes.put(ScriptCollection.FIELD_MATCH, new Object[] { match });
+        final List<Map<String, Object>> results = runQueryScript(ScriptCollection.USER_SEARCH, attributes);
+        if (results.isEmpty()) {
+            return null;
+        }
+        for (final Map<String, Object> data : results) {
             findedIdentities.add(getUserIdentity(data));
         }
         return findedIdentities;
     }
 
-    @Override
-    public void updateUserIdentity(UserIdentity user) throws IdentityException {
-        storeUserIdentity(MODIFICATION_TYPE_ANY, user);
-    }
-
-    private void storeUserIdentity(final int type, UserIdentity user) throws IdentityException {
+    private void storeUserIdentity(final int type, final UserIdentity user) throws IdentityException {
         UserIdentity destinationUser = getUserIdentity(user.getID());
         if (destinationUser == null) {
             if (type == MODIFICATION_TYPE_UPDATE) {
@@ -227,5 +245,10 @@ public class UserIdentityManagerDatabase extends UserIdentityManager {
             }
             runQueryScript(ScriptCollection.USER_UPDATE, destinationUser.getAttributes());
         }
+    }
+
+    @Override
+    public void updateUserIdentity(final UserIdentity user) throws IdentityException {
+        storeUserIdentity(MODIFICATION_TYPE_ANY, user);
     }
 }

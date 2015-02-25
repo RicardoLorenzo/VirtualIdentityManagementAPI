@@ -33,8 +33,8 @@ import com.ricardolorenzo.identity.IdentityAttributeMap;
 import com.ricardolorenzo.identity.IdentityException;
 import com.ricardolorenzo.identity.script.ScriptCollection;
 import com.ricardolorenzo.identity.security.Base64;
-import com.ricardolorenzo.identity.user.impl.UserIdentityManagerDatabase;
-import com.ricardolorenzo.identity.user.impl.UserIdentityManagerLDAPv3;
+import com.ricardolorenzo.identity.user.impl.UserIdentityManagerJDBCDatabase;
+import com.ricardolorenzo.identity.user.impl.UserIdentityManagerLDAP;
 import com.ricardolorenzo.identity.user.impl.UserIdentityManagerMSAD;
 
 public abstract class UserIdentityManager {
@@ -161,7 +161,7 @@ public abstract class UserIdentityManager {
             }
             case USER_MANAGER_LDAPv3: {
                 try {
-                    identityManager = new UserIdentityManagerLDAPv3(conf);
+                    identityManager = new UserIdentityManagerLDAP(conf);
                 } catch (final DirectoryException e) {
                     /**
                      * TODO log this
@@ -181,7 +181,7 @@ public abstract class UserIdentityManager {
             }
             case USER_MANAGER_JDBC: {
                 try {
-                    identityManager = new UserIdentityManagerDatabase(conf);
+                    identityManager = new UserIdentityManagerJDBCDatabase(conf);
                 } catch (final DBException e) {
                     /**
                      * TODO log this
